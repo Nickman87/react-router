@@ -261,37 +261,105 @@ var Router = React.createClass({
     return typeof component === 'function' ? this.props.createElement(component, props) : null;
   },
 
+  _createParentComponentsEntry(newComponents, props) {
+    var result = {};
+
+    for (var key in newComponents) {
+      if (newComponents.hasOwnProperty(key)) {
+        var isElement = typeof newComponents[key] === 'function';
+
+        if (isElement) {
+          result[key] = this._createElement(newComponents[key], props);
+        } else {
+          result[key] = this._createParentComponentsEntry(newComponents[key], props);
+        }
+      }
+    }
+
+    return result;
+  },
+
+  _applyParentComponents(props, parentComponents) {
+    if (typeof parentComponents === 'undefined')
+      return;
+
+    for (var key in parentComponents) {
+      if (parentComponents.hasOwnProperty(key)) {
+        var newComponent = parentComponents[key];
+
+        if (isValidElement(newComponent)) {
+          //Just set the new component on the props
+          props[key] = newComponent;
+        } else {
+          if (!props.hasOwnProperty(key))
+            props[key] = {}; //Prepare an empty object
+
+          if (isValidElement(props[key])) {
+            //Clone the element and inject the nex properties
+            props[key] = React.cloneElement(props[key], newComponent);
+          } else {
+            this._applyParentComponents(props[key], newComponent);
+          }
+        }
+      }
+    }
+  },
+
   render() {
     var { branch, params, components } = this.state;
     var element = null;
+    var parentComponentsCache = [];
 
     if (components) {
       element = components.reduceRight((element, components, index) => {
-        if (components == null)
-          return element; // Don't create new children; use the grandchildren.
-
+        //Calculate route specific information to build the props
         var route = branch[index];
         var routeParams = getRouteParams(route, params);
         var props = Object.assign({}, this.state, { route, routeParams });
 
+        //Check if parent components were defined in this route
+        if (route.hasOwnProperty('parent_components'))
+          parentComponentsCache.unshift(this._createParentComponentsEntry(route['parent_components'], props));
+
+        //Do we have any components for this route?
+        if (components == null)
+          return element; // Don't create new children; use the grandchildren.
+
+        //If the child element is a valid element, add it to our children
         if (isValidElement(element)) {
           props.children = element;
-        } else if (element) {
+        } else if (element) { //It is not a single element, but multiple, add them to the props
           // In render, do var { header, sidebar } = this.props;
           Object.assign(props, element);
         }
 
-        if (typeof components === 'object') {
-          var elements = {};
+        //Make sure to add any parentcomponents to the props
+        for (var i = 0; i < parentComponentsCache.length; ++i) {
+          if (parentComponentsCache[i].hasOwnProperty(route['name']))
+          {
+            var parentComponents = parentComponentsCache[i][route['name']];
 
-          for (var key in components)
-            if (components.hasOwnProperty(key))
-              elements[key] = this._createElement(components[key], props);
-
-          return elements;
+            this._applyParentComponents(props, parentComponents);
+          }
         }
 
-        return this._createElement(components, props);
+        if (typeof components === 'function') {
+          //We have a single component, create the element and return it for the next parent
+          return this._createElement(components, props);
+        } else {
+          //We have multiple components, make sure we create all elements and return them for the next parent
+          var elements = { children: props.children };
+          //Remove the children from the props, we want to pass them along to our parent as children
+          delete props.children;
+          //Create all elements for the given components
+          for (var key in components) {
+            if (components.hasOwnProperty(key)) {
+              elements[key] = this._createElement(components[key], props);
+            }
+          }
+          //Return the elements for the next parent
+          return elements;
+        }
       }, element);
     }
 

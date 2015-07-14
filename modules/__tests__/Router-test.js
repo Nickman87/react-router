@@ -20,6 +20,12 @@ describe('Router', function () {
     }
   });
 
+  var MultiParent = React.createClass({
+    render() {
+      return <div>-{this.props.first}-{this.props.children}-{this.props.second}-</div>;
+    }
+  });
+
   var Child = React.createClass({
     render() {
       return <div>child</div>;
@@ -75,6 +81,59 @@ describe('Router', function () {
       </Router>
     ), div, function () {
       expect(div.textContent.trim()).toMatch(/child/);
+      done();
+    });
+  });
+
+  it('renders multiple components', function (done) {
+    render((
+        <Router history={new MemoryHistory('/')}>
+          <Route name="root" component={MultiParent}>
+            <Route components={{first: Parent}}>
+              <Route component={Parent}>
+                <Route path="/" component={Child} parent_components={{root: {second:Child}}}/>
+              </Route>
+            </Route>
+          </Route>
+        </Router>
+    ), div, function () {
+      expect(div.textContent.trim()).toEqual('-parent-parentchild-child-');
+      done();
+    });
+  });
+
+  it('renders nested parent_components compositions', function (done) {
+    render((
+        <Router history={new MemoryHistory('/')}>
+          <Route name="root" component={MultiParent}>
+            <Route components={{first: Parent}}>
+              <Route component={Parent}>
+                <Route path="/" component={Child} parent_components={{root: {second:Child}}}/>
+              </Route>
+            </Route>
+          </Route>
+        </Router>
+    ), div, function () {
+      expect(div.textContent.trim()).toEqual('-parent-parentchild-child-');
+      done();
+    });
+  });
+
+  it('renders double nested parent_components compositions', function (done) {
+    render((
+        <Router history={new MemoryHistory('/')}>
+          <Route name="root" component={MultiParent}>
+            <Route components={{first: Parent}}>
+              <Route component={Parent}>
+                <Route component={Child} parent_components={{root: {second: MultiParent}}}>
+                  <Route path="/" parent_components={{root: {second: {first: Child, second: Child}}}}/>
+                </Route>
+              </Route>
+            </Route>
+          </Route>
+        </Router>
+    ), div, function () {
+      expect(div.textContent.trim()).toEqual('-parent-parentchild--child--child--');
       done();
     });
   });
